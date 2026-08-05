@@ -1,13 +1,322 @@
 <!DOCTYPE html>
-<html lang="id">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>MarginKu - Kalkulator HPP & Margin UMKM</title>
-    <meta name="theme-color" content="#047857" />
-  </head>
-  <body class="bg-slate-50 text-slate-800 antialiased selection:bg-emerald-500 selection:text-white">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<html>
+<head>
+  <base target="_top">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <style>
+    .tooltip-icon { cursor: pointer; color: #0d6efd; margin-left: 5px; }
+    .card-custom { margin-bottom: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    .nav-tabs .nav-link.active { font-weight: bold; background-color: #f8f9fa; }
+  </style>
+</head>
+<body class="bg-light p-3 p-md-4">
+
+<div class="container-fluid">
+  <!-- Header & Status Sinkronisasi -->
+  <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+    <h2><i class="bi bi-box-seam"></i> Sistem Manajemen Produksi & HPP</h2>
+    <div>
+      <button class="btn btn-outline-primary me-2" onclick="pullDataFromSheet()" title="Tarik data terbaru dari Google Sheets">
+        <i class="bi bi-arrow-down-left-circle"></i> Sinkronkan / Tarik Data
+      </button>
+      <span id="sync-status" class="badge bg-secondary">Belum Terkoneksi</span>
+    </div>
+  </div>
+
+  <!-- TAB NAVIGASI -->
+  <ul class="nav nav-tabs mb-3" id="mainTab" role="tablist">
+    <li class="nav-item">
+      <button class="nav-link active" id="master-tab" data-bs-toggle="tab" data-bs-target="#master-content">
+        <i class="bi bi-database"></i> Master Data Terkelola
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" id="katalog-tab" data-bs-toggle="tab" data-bs-target="#katalog-content">
+        <i class="bi bi-journal-text"></i> Katalog Resep
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="mainTabContent">
+    
+    <!-- TAB 1: MASTER DATA -->
+    <div class="tab-pane fade show active" id="master-content">
+      
+      <!-- Modul Pencarian Global/Kategori -->
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" id="searchInput" class="form-control" onkeyup="filterMasterData()" placeholder="Cari nama bahan, pekerja, alat, atau operasional...">
+          </div>
+        </div>
+      </div>
+
+      <!-- Kategori Tabs untuk Master Data -->
+      <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-bahan">Bahan Baku</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-tk">Tenaga Kerja</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-aset">Alat / Aset</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-overhead">Overhead / Operasional</button></li>
+      </ul>
+
+      <div class="tab-content" id="pills-tabContent">
+        
+        <!-- 1. BAHAN BAKU -->
+        <div class="tab-pane fade show active" id="pills-bahan">
+          <div class="card card-custom p-3">
+            <h5>Daftar Master Bahan Baku</h5>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tableBahan">
+                <thead class="table-dark">
+                  <tr><th>Nama Bahan</th><th>Satuan</th><th>Harga Beli</th><th>Keterangan</th></tr>
+                </thead>
+                <tbody id="tbodyBahan"><tr><td colspan="4" class="text-center">Memuat data...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. TENAGA KERJA -->
+        <div class="tab-pane fade" id="pills-tk">
+          <div class="card card-custom p-3">
+            <h5>Daftar Master & Rincian Penghitungan Tenaga Kerja</h5>
+            <p class="text-muted small">Rincian biaya dihitung berdasarkan Upah Standar per Jam/Hari dikalikan total durasi pengerjaan produk.</p>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tableTK">
+                <thead class="table-dark">
+                  <tr>
+                    <th>Nama Pekerja</th>
+                    <th>Peran/Posisi</th>
+                    <th>Rate Upah (Rp/Jam)</th>
+                    <th>Standar Durasi (Jam)</th>
+                    <th>Rincian Biaya / Batch (Rp)</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyTK"><tr><td colspan="5" class="text-center">Memuat data...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. ALAT / ASET & PENYUSUTAN -->
+        <div class="tab-pane fade" id="pills-aset">
+          <div class="card card-custom p-3">
+            <h5>Daftar Alat / Aset & Penjelasan Penyusutan</h5>
+            
+            <!-- Box Penjelasan Penyusutan -->
+            <div class="alert alert-info">
+              <h6><i class="bi bi-info-circle-fill"></i> Metode Perhitungan Penyusutan Aset (Garis Lurus)</h6>
+              <small>
+                <strong>Rumus Penyusutan Bulanan:</strong> <code>(Harga Beli Aset - Nilai Sisa) / Masa Pakai (Bulan)</code><br>
+                <em>Penjelasan:</em> Mengalokasikan nilai beban alat secara merata selama estimasi umur ekonomis alat agar masuk ke dalam HPP produksi.
+              </small>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tableAset">
+                <thead class="table-dark">
+                  <tr>
+                    <th>Nama Alat/Aset</th>
+                    <th>Harga Beli (Rp)</th>
+                    <th>Masa Pakai (Bulan)</th>
+                    <th>Nilai Sisa (Rp)</th>
+                    <th>Biaya Penyusutan / Bulan</th>
+                    <th>Keterangan / Fungsi Alat</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyAset"><tr><td colspan="6" class="text-center">Memuat data...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. OVERHEAD -->
+        <div class="tab-pane fade" id="pills-overhead">
+          <div class="card card-custom p-3">
+            <h5>Daftar Biaya Overhead / Operasional</h5>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tableOverhead">
+                <thead class="table-dark">
+                  <tr><th>Jenis Biaya</th><th>Estimasi / Bulan (Rp)</th><th>Keterangan Input</th></tr>
+                </thead>
+                <tbody id="tbodyOverhead"><tr><td colspan="3" class="text-center">Memuat data...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- TAB 2: KATALOG RESEP -->
+    <div class="tab-pane fade" id="katalog-content">
+      <div class="card card-custom p-3">
+        <h5>Katalog Resep & Produk</h5>
+        <div class="row" id="katalogContainer">
+          <!-- Item Katalog dimasukkan secara dinamis melalui JavaScript -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  let masterData = {};
+
+  // PULL DATA (Ambil Data dari Google Sheets)
+  function pullDataFromSheet() {
+    const statusEl = document.getElementById('sync-status');
+    statusEl.className = 'badge bg-warning text-dark';
+    statusEl.innerText = 'Proses Menarik Data...';
+
+    google.script.run
+      .withSuccessHandler((response) => {
+        if (response.status === 'success') {
+          masterData = response.data;
+          renderAllTables();
+          renderKatalog();
+          statusEl.className = 'badge bg-success';
+          statusEl.innerText = 'Data Tersinkronisasi';
+        } else {
+          statusEl.className = 'badge bg-danger';
+          statusEl.innerText = 'Gagal Sinkronisasi';
+        }
+      })
+      .withFailureHandler(() => {
+        statusEl.className = 'badge bg-danger';
+        statusEl.innerText = 'Error Koneksi';
+      })
+      .syncPullData();
+  }
+
+  // RENDER TABEL MASTER DATA
+  function renderAllTables() {
+    // 1. Render Bahan Baku
+    const tbodyBahan = document.getElementById('tbodyBahan');
+    tbodyBahan.innerHTML = (masterData.BAHAN_BAKU || []).map(item => `
+      <tr>
+        <td><strong>${item.nama_bahan || '-'}</strong></td>
+        <td>${item.satuan || '-'}</td>
+        <td>Rp ${Number(item.harga_beli || 0).toLocaleString('id-ID')}</td>
+        <td><span class="text-muted">${item.keterangan || 'Bahan produksi utama'}</span></td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" class="text-center">Tidak ada data.</td></tr>';
+
+    // 2. Render Tenaga Kerja + Calculation
+    const tbodyTK = document.getElementById('tbodyTK');
+    tbodyTK.innerHTML = (masterData.TENAGA_KERJA || []).map(item => {
+      const rate = Number(item.rate_per_jam || 0);
+      const durasi = Number(item.durasi_jam || 0);
+      const totalCost = rate * durasi;
+      return `
+        <tr>
+          <td><strong>${item.nama_pekerja || '-'}</strong></td>
+          <td>${item.posisi || 'Operator'}</td>
+          <td>Rp ${rate.toLocaleString('id-ID')} / jam</td>
+          <td>${durasi} jam</td>
+          <td><strong class="text-success">Rp ${totalCost.toLocaleString('id-ID')}</strong></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="5" class="text-center">Tidak ada data.</td></tr>';
+
+    // 3. Render Aset + Penyusutan
+    const tbodyAset = document.getElementById('tbodyAset');
+    tbodyAset.innerHTML = (masterData.ASET || []).map(item => {
+      const harga = Number(item.harga_beli || 0);
+      const masaPakai = Number(item.masa_pakai_bulan || 1);
+      const nilaiSisa = Number(item.nilai_sisa || 0);
+      const penyusutanPerBulan = (harga - nilaiSisa) / masaPakai;
+
+      return `
+        <tr>
+          <td><strong>${item.nama_alat || '-'}</strong></td>
+          <td>Rp ${harga.toLocaleString('id-ID')}</td>
+          <td>${masaPakai} Bulan</td>
+          <td>Rp ${nilaiSisa.toLocaleString('id-ID')}</td>
+          <td><strong class="text-danger">Rp ${Math.round(penyusutanPerBulan).toLocaleString('id-ID')} / Bln</strong></td>
+          <td>${item.keterangan || 'Peralatan operasional standar'}</td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="6" class="text-center">Tidak ada data.</td></tr>';
+
+    // 4. Render Overhead
+    const tbodyOverhead = document.getElementById('tbodyOverhead');
+    tbodyOverhead.innerHTML = (masterData.OVERHEAD || []).map(item => `
+      <tr>
+        <td><strong>${item.jenis_biaya || '-'}</strong></td>
+        <td>Rp ${Number(item.biaya_per_bulan || 0).toLocaleString('id-ID')}</td>
+        <td>${item.keterangan || 'Biaya rutin bulanan'}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="3" class="text-center">Tidak ada data.</td></tr>';
+  }
+
+  // RENDER KATALOG & TOMBOL DOWNLOAD RESEP
+  function renderKatalog() {
+    const container = document.getElementById('katalogContainer');
+    const catalogItems = masterData.KATALOG || [
+      { id: 1, nama_resep: 'Produk Sampel A', hpp: 15000, rincian: 'Bahan Baku: 10,000, Tenaga Kerja: 3,000, Overhead: 2,000' }
+    ];
+
+    container.innerHTML = catalogItems.map(item => `
+      <div class="col-md-4 mb-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title">${item.nama_resep}</h5>
+            <p class="card-text"><strong>Total HPP:</strong> Rp ${Number(item.hpp || 0).toLocaleString('id-ID')}</p>
+            <p class="text-muted small">${item.rincian || 'Rincian belum ditambahkan.'}</p>
+          </div>
+          <div class="card-footer bg-white border-top-0">
+            <button class="btn btn-sm btn-outline-success w-100" onclick="downloadResepItem('${item.nama_resep}', '${item.hpp}', '${item.rincian}')">
+              <i class="bi bi-download"></i> Download Rincian Resep
+            </button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // FUNGSI DOWNLOAD PER ITEM RESEP
+  function downloadResepItem(nama, hpp, rincian) {
+    const fileContent = `=========================================\n` +
+                        `          RINCIAN RESEP & HPP            \n` +
+                        `=========================================\n\n` +
+                        `Nama Resep / Produk : ${nama}\n` +
+                        `Total Perhitungan HPP: Rp ${Number(hpp).toLocaleString('id-ID')}\n\n` +
+                        `-----------------------------------------\n` +
+                        `Rincian Komponen Biaya:\n` +
+                        `${rincian || 'Tidak ada detail rincian tambahan.'}\n\n` +
+                        `=========================================\n` +
+                        `Diunduh dari Sistem Manajemen Produksi`;
+
+    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Resep_${nama.replace(/\s+/g, '_')}.txt`;
+    link.click();
+  }
+
+  // MODUL PANCARIAN (SEARCH ENGINE)
+  function filterMasterData() {
+    const input = document.getElementById('searchInput').value.toLowerCase();
+    const tables = ['tableBahan', 'tableTK', 'tableAset', 'tableOverhead'];
+
+    tables.forEach(tableId => {
+      const rows = document.querySelectorAll(`#${tableId} tbody tr`);
+      rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(input) ? '' : 'none';
+      });
+    });
+  }
+
+  // Inisialisasi awal saat halaman dibuka
+  window.onload = function() {
+    pullDataFromSheet();
+  };
+</script>
+</body>
 </html>
