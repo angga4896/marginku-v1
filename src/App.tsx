@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { 
   Database, Calculator, BookOpen, Settings, Trash2, 
-  Printer, Download, Cloud, Lock, Unlock, Wrench
+  Printer, Download, Cloud, Lock, Unlock, Wrench, RefreshCw
 } from 'lucide-react';
 import { BahanBaku, TenagaKerja, AlatProduksi, ResepHPP } from './types';
 import { safeNum, formatRp, exportToCSV } from './utils/helpers';
@@ -17,7 +17,6 @@ export default function App() {
 
   // Master Data Inputs
   const [newBahan, setNewBahan] = useState({ nama: '', hargaBeli: '', isiKemasan: '', satuan: 'gram' as const });
-  const [newTenaga, setNewTenaga] = useState({ nama: '', tipe: 'gaji_harian' as const, nominal: '', jamKerjaHarian: '8' });
   const [newAlat, setNewAlat] = useState({ nama: '', hargaBeli: '', umurBulan: '12', targetPorsiHarian: '50' });
 
   // Kalkulator Form State
@@ -32,8 +31,9 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // Load Synchronous Data
+  // 1. Load Synchronous Local Storage
   useLayoutEffect(() => {
     try {
       const savedBahan = localStorage.getItem('marginku_bahan');
@@ -52,34 +52,92 @@ export default function App() {
     }
   }, []);
 
+  // Save to LocalStorage
   useEffect(() => { localStorage.setItem('marginku_bahan', JSON.stringify(bahanMaster)); }, [bahanMaster]);
   useEffect(() => { localStorage.setItem('marginku_tenaga', JSON.stringify(tenagaMaster)); }, [tenagaMaster]);
   useEffect(() => { localStorage.setItem('marginku_alat', JSON.stringify(alatMaster)); }, [alatMaster]);
   useEffect(() => { localStorage.setItem('marginku_resep', JSON.stringify(resepList)); }, [resepList]);
 
-  // Master Handlers
+  // 2. AUTO-FETCH DARI CLOUD SAAT APLIKASI PERTAMA DIBUKA
+  useEffect(() => {
+    const savedWebhook = localStorage.getItem('marginku_webhook');
+    if (savedWebhook) {
+      fetchFromCloud(savedWebhook);
+    }
+  }, []);
+
+  const fetchFromCloud = async (url: string) => {
+    if (!url) return;
+    setIsSyncing(true);
+    setSyncStatus('Mengambil data terbaru dari Cloud...');
+    try {
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json && json.status === 'success' && json.data) {
+        const cloudData = json.data;
+        if (cloudData.bahanMaster) setBahanMaster(cloudData.bahanMaster);
+        if (cloudData.tenagaMaster) setTenagaMaster(cloudData.tenagaMaster);
+        if (cloudData.alatMaster) setAlatMaster(cloudData.alatMaster);
+        if (cloudData.resepList) setResepList(cloudData.resepList);
+        setSyncStatus('Data tersinkronisasi otomatis dari Cloud!');
+      } else {
+        setSyncStatus('Cloud kosong atau format data tidak sesuai.');
+      }
+    } catch (e) {
+      setSyncStatus('Mode Offline / Menggunakan Data Lokal.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const syncToCloud = async (overrideData?: any) => {
+    if (!webhookUrl) return;
+    setIsSyncing(true);
+    setSyncStatus('Mengirim pembaruan ke Cloud...');
+    try {
+      const payload = overrideData || { bahanMaster, tenagaMaster, alatMaster, resepList };
+      await fetch(webhookUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ type: 'MARGINKU_BACKUP', payload }),
+      });
+      localStorage.setItem('marginku_webhook', webhookUrl);
+      setSyncStatus('Pembaruan tersimpan ke Cloud!');
+    } catch (e) {
+      setSyncStatus('Gagal update ke Cloud.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Handlers Master Data
   const handleAddBahan = () => {
     if (!newBahan.nama || !newBahan.hargaBeli || !newBahan.isiKemasan) return;
-    setBahanMaster([...bahanMaster, {
+    const updated = [...bahanMaster, {
       id: Date.now().toString(),
       nama: newBahan.nama,
       hargaBeli: safeNum(newBahan.hargaBeli),
       isiKemasan: Math.max(1, safeNum(newBahan.isiKemasan)),
       satuan: newBahan.satuan,
-    }]);
+    }];
+    setBahanMaster(updated);
     setNewBahan({ nama: '', hargaBeli: '', isiKemasan: '', satuan: 'gram' });
+    syncToCloud({ bahanMaster: updated, tenagaMaster, alatMaster, resepList });
   };
 
   const handleAddAlat = () => {
     if (!newAlat.nama || !newAlat.hargaBeli) return;
-    setAlatMaster([...alatMaster, {
+    const updated = [...alatMaster, {
       id: Date.now().toString(),
       nama: newAlat.nama,
       hargaBeli: safeNum(newAlat.hargaBeli),
       umurBulan: Math.max(1, safeNum(newAlat.umurBulan)),
       targetPorsiHarian: Math.max(1, safeNum(newAlat.targetPorsiHarian)),
-    }]);
+    }];
+    setAlatMaster(updated);
     setNewAlat({ nama: '', hargaBeli: '', umurBulan: '12', targetPorsiHarian: '50' });
+    syncToCloud({ bahanMaster, tenagaMaster, alatMaster: updated, resepList });
   };
 
   // Safe Math Calculations
@@ -124,29 +182,16 @@ export default function App() {
       hargaJualTarget,
       tanggalDibuat: new Date().toLocaleDateString('id-ID'),
     };
-    setResepList([...resepList, resepBaru]);
+    const updatedResep = [...resepList, resepBaru];
+    setResepList(updatedResep);
     alert('Resep HPP Berhasil Disimpan!');
     setNamaProduk('');
     setSelectedBahanList([]);
     setSelectedAlatList([]);
     setOperasionalList([]);
-  };
-
-  const handleSyncCloud = async () => {
-    if (!webhookUrl) return alert('Masukkan Webhook App URL Google Drive!');
-    setSyncStatus('Sedang Menyinkronkan...');
-    try {
-      await fetch(webhookUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ type: 'MARGINKU_BACKUP', payload: { bahanMaster, tenagaMaster, alatMaster, resepList } }),
-      });
-      localStorage.setItem('marginku_webhook', webhookUrl);
-      setSyncStatus('Berhasil Terhubung & Tersimpan ke Cloud!');
-    } catch (e) {
-      setSyncStatus('Gagal terhubung ke Cloud.');
-    }
+    
+    // Auto sync ke cloud saat resep disimpan
+    syncToCloud({ bahanMaster, tenagaMaster, alatMaster, resepList: updatedResep });
   };
 
   return (
@@ -156,16 +201,25 @@ export default function App() {
           <h1 className="text-xl font-bold tracking-wide">MarginKu</h1>
           <p className="text-xs text-emerald-100">Kalkulator HPP & Margin UMKM</p>
         </div>
-        <button 
-          onClick={() => setIsAdmin(!isAdmin)}
-          className="text-xs bg-emerald-800 hover:bg-emerald-900 px-3 py-1.5 rounded-full flex items-center gap-1 border border-emerald-600"
-        >
-          {isAdmin ? <Unlock size={14}/> : <Lock size={14}/>}
-          {isAdmin ? 'Admin' : 'Viewer'}
-        </button>
+        <div className="flex items-center gap-2">
+          {isSyncing && <RefreshCw size={14} className="animate-spin text-emerald-200" />}
+          <button 
+            onClick={() => setIsAdmin(!isAdmin)}
+            className="text-xs bg-emerald-800 hover:bg-emerald-900 px-3 py-1.5 rounded-full flex items-center gap-1 border border-emerald-600"
+          >
+            {isAdmin ? <Unlock size={14}/> : <Lock size={14}/>}
+            {isAdmin ? 'Admin' : 'Viewer'}
+          </button>
+        </div>
       </header>
 
       <main className="p-4 max-w-md mx-auto">
+        {syncStatus && (
+          <div className="mb-3 p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] rounded-lg text-center font-medium">
+            {syncStatus}
+          </div>
+        )}
+
         {/* TAB 1: MASTER DATA */}
         {activeTab === 'master' && (
           <div className="space-y-6">
@@ -201,7 +255,11 @@ export default function App() {
                       <p className="font-semibold">{b.nama}</p>
                       <p className="text-slate-500">{formatRp(b.hargaBeli)} / {b.isiKemasan} {b.satuan}</p>
                     </div>
-                    <button onClick={() => setBahanMaster(bahanMaster.filter(x => x.id !== b.id))} className="text-red-500 p-1"><Trash2 size={14}/></button>
+                    <button onClick={() => {
+                      const updated = bahanMaster.filter(x => x.id !== b.id);
+                      setBahanMaster(updated);
+                      syncToCloud({ bahanMaster: updated, tenagaMaster, alatMaster, resepList });
+                    }} className="text-red-500 p-1"><Trash2 size={14}/></button>
                   </div>
                 ))}
               </div>
@@ -221,7 +279,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Section Bahan */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="font-semibold text-sm text-slate-800">2. Bahan Baku</h3>
@@ -247,7 +304,6 @@ export default function App() {
               ))}
             </div>
 
-            {/* Section Penyusutan Alat (Form Identik) */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-1"><Wrench size={16}/> 3. Penyusutan Alat</h3>
@@ -268,7 +324,6 @@ export default function App() {
               ))}
             </div>
 
-            {/* Section Operasional */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="font-semibold text-sm text-slate-800">4. Operasional / Stiker</h3>
@@ -276,7 +331,7 @@ export default function App() {
               </div>
               {operasionalList.map((item, index) => (
                 <div key={item.id} className="flex gap-2 items-center text-xs">
-                  <input type="text" placeholder="Nama Biaya (Gas/Kemasan)" value={item.nama} onChange={e => {
+                  <input type="text" placeholder="Nama Biaya" value={item.nama} onChange={e => {
                     const copy = [...operasionalList];
                     copy[index].nama = e.target.value;
                     setOperasionalList(copy);
@@ -337,8 +392,10 @@ export default function App() {
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
               <h3 className="font-semibold text-sm flex items-center gap-1.5"><Cloud size={16}/> Integrasi Google Drive</h3>
               <input type="text" placeholder="Google Webhook App URL" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} className="w-full p-2 border text-xs rounded-lg" />
-              <button onClick={handleSyncCloud} className="w-full bg-slate-800 text-white text-xs py-2 rounded-lg font-medium">Sinkronkan Sekarang</button>
-              {syncStatus && <p className="text-xs text-emerald-600 font-medium">{syncStatus}</p>}
+              <div className="flex gap-2">
+                <button onClick={() => fetchFromCloud(webhookUrl)} className="flex-1 bg-emerald-700 text-white text-xs py-2 rounded-lg font-medium">Tarik Data Cloud</button>
+                <button onClick={() => syncToCloud()} className="flex-1 bg-slate-800 text-white text-xs py-2 rounded-lg font-medium">Kirim Data Cloud</button>
+              </div>
             </div>
           </div>
         )}
