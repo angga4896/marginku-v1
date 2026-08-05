@@ -2,24 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Print styles for receipt */
 @media print {
-  body * {
-    visibility: hidden;
+  header, nav, button, input[type="range"] {
+    display: none !important;
   }
-  #print-area,
-  #print-area * {
-    visibility: visible;
-  }
-  #print-area {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    padding: 1rem;
-    font-size: 12px;
-    color: #000;
-    background: #fff;
+  body {
+    background: white !important;
+    color: black !important;
   }
   .no-print {
     display: none !important;
