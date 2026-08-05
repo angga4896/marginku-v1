@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { 
   Database, Calculator, BookOpen, Settings, Trash2, 
-  Printer, Download, Cloud, Lock, Unlock, Wrench, RefreshCw, Plus, AlertTriangle, Users, Copy, Check, Search, Store, DollarSign
+  Printer, Download, Wrench, Plus, Users, Copy, Check, Search, Store, UserCheck
 } from 'lucide-react';
 import { BahanBaku, TenagaKerja, AlatProduksi, ResepHPP } from './types';
 import { safeNum, formatRp, exportToCSV } from './utils/helpers';
@@ -49,23 +49,9 @@ export default function App() {
   const [goFoodFee, setGoFoodFee] = useState<string>('20');
   const [grabFoodFee, setGrabFoodFee] = useState<string>('20');
   const [shopeeFoodFee, setShopeeFoodFee] = useState<string>('20');
-  const [fixedFeeOjol, setFixedFeeOjol] = useState<string>('1000'); // Biaya penanganan/stiker jika ada
+  const [fixedFeeOjol, setFixedFeeOjol] = useState<string>('1000');
 
-  // Modal Deduplication State
-  const [duplicateModal, setDuplicateModal] = useState<{
-    show: boolean;
-    type: 'bahan' | 'alat' | 'overhead';
-    newItem: any;
-    existingItem: any;
-    onResolve: (action: 'overwrite' | 'keep_old' | 'save_new') => void;
-  }>({ show: false, type: 'bahan', newItem: null, existingItem: null, onResolve: () => {} });
-
-  // Settings & Sync State
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  // Synchronous LocalStorage Load
+  // LocalStorage Load
   useLayoutEffect(() => {
     try {
       const savedBahan = localStorage.getItem('marginku_bahan');
@@ -73,110 +59,50 @@ export default function App() {
       const savedAlat = localStorage.getItem('marginku_alat');
       const savedOverhead = localStorage.getItem('marginku_overhead');
       const savedResep = localStorage.getItem('marginku_resep');
-      const savedWebhook = localStorage.getItem('marginku_webhook');
 
       if (savedBahan) setBahanMaster(JSON.parse(savedBahan));
       if (savedTenaga) setTenagaMaster(JSON.parse(savedTenaga));
       if (savedAlat) setAlatMaster(JSON.parse(savedAlat));
       if (savedOverhead) setOverheadMaster(JSON.parse(savedOverhead));
       if (savedResep) setResepList(JSON.parse(savedResep));
-      if (savedWebhook) setWebhookUrl(savedWebhook);
     } catch (e) {
       console.error('Error LocalStorage:', e);
     }
   }, []);
 
-  // Auto Save LocalStorage
+  // Save LocalStorage
   useEffect(() => { localStorage.setItem('marginku_bahan', JSON.stringify(bahanMaster)); }, [bahanMaster]);
   useEffect(() => { localStorage.setItem('marginku_tenaga', JSON.stringify(tenagaMaster)); }, [tenagaMaster]);
   useEffect(() => { localStorage.setItem('marginku_alat', JSON.stringify(alatMaster)); }, [alatMaster]);
   useEffect(() => { localStorage.setItem('marginku_overhead', JSON.stringify(overheadMaster)); }, [overheadMaster]);
   useEffect(() => { localStorage.setItem('marginku_resep', JSON.stringify(resepList)); }, [resepList]);
 
-  // Cloud Sync
-  useEffect(() => {
-    const savedWebhook = localStorage.getItem('marginku_webhook');
-    if (savedWebhook) fetchFromCloud(savedWebhook);
-  }, []);
-
-  const fetchFromCloud = async (url: string) => {
-    if (!url) return;
-    setIsSyncing(true);
-    setSyncStatus('Mengambil data dari Cloud...');
-    try {
-      const res = await fetch(url);
-      const json = await res.json();
-      if (json && json.status === 'success' && json.data) {
-        const cloudData = json.data;
-        if (cloudData.bahanMaster) setBahanMaster(cloudData.bahanMaster);
-        if (cloudData.tenagaMaster) setTenagaMaster(cloudData.tenagaMaster);
-        if (cloudData.alatMaster) setAlatMaster(cloudData.alatMaster);
-        if (cloudData.overheadMaster) setOverheadMaster(cloudData.overheadMaster);
-        if (cloudData.resepList) setResepList(cloudData.resepList);
-        setSyncStatus('Data tersinkronisasi dari Cloud!');
-      }
-    } catch (e) {
-      setSyncStatus('Mode Offline / Data Lokal.');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const syncToCloud = async (overrideData?: any) => {
-    if (!webhookUrl) return;
-    setIsSyncing(true);
-    setSyncStatus('Mengirim pembaruan ke Cloud...');
-    try {
-      const payload = overrideData || { bahanMaster, tenagaMaster, alatMaster, overheadMaster, resepList };
-      await fetch(webhookUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ type: 'MARGINKU_BACKUP', payload }),
-      });
-      localStorage.setItem('marginku_webhook', webhookUrl);
-      setSyncStatus('Pembaruan tersimpan di Cloud!');
-    } catch (e) {
-      setSyncStatus('Gagal update ke Cloud.');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Master Data Adders
+  // Handlers Master Data
   const handleAddBahan = () => {
     if (!newBahan.nama || !newBahan.hargaBeli || !newBahan.isiKemasan) return;
-    const updated = [...bahanMaster, { id: Date.now().toString(), nama: newBahan.nama, hargaBeli: safeNum(newBahan.hargaBeli), isiKemasan: Math.max(1, safeNum(newBahan.isiKemasan)), satuan: newBahan.satuan }];
-    setBahanMaster(updated);
+    setBahanMaster([...bahanMaster, { id: Date.now().toString(), nama: newBahan.nama, hargaBeli: safeNum(newBahan.hargaBeli), isiKemasan: Math.max(1, safeNum(newBahan.isiKemasan)), satuan: newBahan.satuan }]);
     setNewBahan({ nama: '', hargaBeli: '', isiKemasan: '', satuan: 'gram' });
-    syncToCloud({ bahanMaster: updated, tenagaMaster, alatMaster, overheadMaster, resepList });
   };
 
   const handleAddTenaga = () => {
     if (!newTenaga.nama || !newTenaga.nominal) return;
-    const updated = [...tenagaMaster, { id: Date.now().toString(), nama: newTenaga.nama, tipe: newTenaga.tipe, nominal: safeNum(newTenaga.nominal), jamKerjaHarian: safeNum(newTenaga.jamKerjaHarian || '8') }];
-    setTenagaMaster(updated);
+    setTenagaMaster([...tenagaMaster, { id: Date.now().toString(), nama: newTenaga.nama, tipe: newTenaga.tipe, nominal: safeNum(newTenaga.nominal), jamKerjaHarian: safeNum(newTenaga.jamKerjaHarian || '8') }]);
     setNewTenaga({ nama: '', tipe: 'gaji_harian', nominal: '', jamKerjaHarian: '8' });
-    syncToCloud({ bahanMaster, tenagaMaster: updated, alatMaster, overheadMaster, resepList });
   };
 
   const handleAddAlat = () => {
     if (!newAlat.nama || !newAlat.hargaBeli) return;
-    const updated = [...alatMaster, { id: Date.now().toString(), nama: newAlat.nama, hargaBeli: safeNum(newAlat.hargaBeli), umurBulan: Math.max(1, safeNum(newAlat.umurBulan)), targetPorsiHarian: Math.max(1, safeNum(newAlat.targetPorsiHarian)) }];
-    setAlatMaster(updated);
+    setAlatMaster([...alatMaster, { id: Date.now().toString(), nama: newAlat.nama, hargaBeli: safeNum(newAlat.hargaBeli), umurBulan: Math.max(1, safeNum(newAlat.umurBulan)), targetPorsiHarian: Math.max(1, safeNum(newAlat.targetPorsiHarian)) }]);
     setNewAlat({ nama: '', hargaBeli: '', umurBulan: '12', targetPorsiHarian: '50' });
-    syncToCloud({ bahanMaster, tenagaMaster, alatMaster: updated, overheadMaster, resepList });
   };
 
   const handleAddOverhead = () => {
     if (!newOverhead.nama || !newOverhead.nominal) return;
-    const updated = [...overheadMaster, { id: Date.now().toString(), nama: newOverhead.nama, nominal: safeNum(newOverhead.nominal) }];
-    setOverheadMaster(updated);
+    setOverheadMaster([...overheadMaster, { id: Date.now().toString(), nama: newOverhead.nama, nominal: safeNum(newOverhead.nominal) }]);
     setNewOverhead({ nama: '', nominal: '' });
-    syncToCloud({ bahanMaster, tenagaMaster, alatMaster, overheadMaster: updated, resepList });
   };
 
-  // Math Calculations
+  // Perhitungan Matematika Kalkulator HPP
   const porsi = Math.max(1, safeNum(targetPorsi));
 
   const totalBiayaBahan = selectedBahanList.reduce((acc, item) => {
@@ -191,7 +117,13 @@ export default function App() {
 
   const totalBiayaTenaga = selectedTenagaList.reduce((acc, item) => {
     if (item.tipe === 'borongan') return acc + safeNum(item.durasiAtauNominal);
-    const tarifPerMenit = (safeNum(item.durasiAtauNominal) / 8) / 60;
+    if (item.tenagaId === 'MANUAL') {
+      const tarifPerMenit = (safeNum(item.durasiAtauNominal) / 8) / 60;
+      return acc + (tarifPerMenit * safeNum(item.durasiAtauNominal));
+    }
+    const tenaga = tenagaMaster.find(t => t.id === item.tenagaId);
+    if (!tenaga) return acc;
+    const tarifPerMenit = (tenaga.nominal / Math.max(1, tenaga.jamKerjaHarian)) / 60;
     return acc + (tarifPerMenit * safeNum(item.durasiAtauNominal));
   }, 0);
 
@@ -216,45 +148,44 @@ export default function App() {
 
   const totalHppKeseluruhan = totalBiayaBahan + totalBiayaTenaga + totalBiayaAlat + totalBiayaOverhead;
   const hppPerPorsi = totalHppKeseluruhan / porsi;
-  
-  // Harga BEP & Harga Jual Target Normal
   const hargaJualBEP = hppPerPorsi; 
   const hargaJualTarget = hppPerPorsi / Math.max(0.01, (1 - (safeNum(targetMargin) / 100)));
 
-  // Formula Online Merchant Pricing (Gross-Up Fee)
   const calcOnlinePrice = (feePercentStr: string) => {
     const feePct = safeNum(feePercentStr) / 100;
     const extraFixed = safeNum(fixedFeeOjol);
     return (hargaJualTarget + extraFixed) / Math.max(0.01, (1 - feePct));
   };
 
-  const hargaGoFood = calcOnlinePrice(goFoodFee);
-  const hargaGrabFood = calcOnlinePrice(grabFoodFee);
-  const hargaShopeeFood = calcOnlinePrice(shopeeFoodFee);
-
-  // Simpan Resep HPP
   const handleSimpanResep = async () => {
     if (!isAdmin) return alert('Mode Staff hanya dapat membaca data!');
     if (!namaProduk) return alert('Masukkan Nama Produk!');
 
     let currentBahan = [...bahanMaster];
+    let currentTenaga = [...tenagaMaster];
     let currentAlat = [...alatMaster];
     let currentOverhead = [...overheadMaster];
 
-    // Auto-Save Manual Items to Master Data
+    // Auto-Save Manual ke Master Data
     for (const item of selectedBahanList) {
       if (item.bahanId === 'MANUAL' && item.namaManual) {
-        const existing = currentBahan.find(b => b.nama.toLowerCase().trim() === item.namaManual.toLowerCase().trim());
-        if (!existing) {
+        if (!currentBahan.some(b => b.nama.toLowerCase().trim() === item.namaManual.toLowerCase().trim())) {
           currentBahan.push({ id: Date.now().toString(), nama: item.namaManual, hargaBeli: safeNum(item.hargaBeli), isiKemasan: Math.max(1, safeNum(item.isiKemasan)), satuan: 'gram' });
+        }
+      }
+    }
+
+    for (const item of selectedTenagaList) {
+      if (item.tenagaId === 'MANUAL' && item.namaManual) {
+        if (!currentTenaga.some(t => t.nama.toLowerCase().trim() === item.namaManual.toLowerCase().trim())) {
+          currentTenaga.push({ id: Date.now().toString(), nama: item.namaManual, tipe: 'gaji_harian', nominal: safeNum(item.durasiAtauNominal), jamKerjaHarian: 8 });
         }
       }
     }
 
     for (const item of selectedAlatList) {
       if (item.alatId === 'MANUAL' && item.namaManual) {
-        const existing = currentAlat.find(a => a.nama.toLowerCase().trim() === item.namaManual.toLowerCase().trim());
-        if (!existing) {
+        if (!currentAlat.some(a => a.nama.toLowerCase().trim() === item.namaManual.toLowerCase().trim())) {
           currentAlat.push({ id: Date.now().toString(), nama: item.namaManual, hargaBeli: safeNum(item.hargaBeli), umurBulan: Math.max(1, safeNum(item.umurBulan)), targetPorsiHarian: Math.max(1, safeNum(item.targetPorsiHarian)) });
         }
       }
@@ -262,14 +193,14 @@ export default function App() {
 
     for (const item of selectedOverheadList) {
       if (item.overheadId === 'MANUAL' && item.namaManual) {
-        const existing = currentOverhead.find(o => o.nama.toLowerCase().trim() === item.namaManual.toLowerCase().trim());
-        if (!existing) {
+        if (!currentOverhead.some(o => o.nama.toLowerCase().trim() === item.namaManual.toLowerCase().trim())) {
           currentOverhead.push({ id: Date.now().toString(), nama: item.namaManual, nominal: safeNum(item.nominal) });
         }
       }
     }
 
     setBahanMaster(currentBahan);
+    setTenagaMaster(currentTenaga);
     setAlatMaster(currentAlat);
     setOverheadMaster(currentOverhead);
 
@@ -292,16 +223,13 @@ export default function App() {
       tanggalDibuat: new Date().toLocaleDateString('id-ID'),
     };
 
-    const updatedResep = [...resepList, resepBaru];
-    setResepList(updatedResep);
+    setResepList([...resepList, resepBaru]);
     alert('Resep HPP Berhasil Disimpan!');
     setNamaProduk('');
     setSelectedBahanList([]);
     setSelectedTenagaList([]);
     setSelectedAlatList([]);
     setSelectedOverheadList([]);
-
-    syncToCloud({ bahanMaster: currentBahan, tenagaMaster, alatMaster: currentAlat, overheadMaster: currentOverhead, resepList: updatedResep });
   };
 
   const handleCopyStaffLink = () => {
@@ -315,28 +243,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 pb-20 font-sans">
-      {/* Header */}
       <header className="bg-emerald-700 text-white p-4 shadow-md sticky top-0 z-50 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold tracking-wide">MarginKu</h1>
           <p className="text-xs text-emerald-100">{isAdmin ? 'Kalkulator HPP & Margin (Admin)' : 'Katalog Resep (Akses Staff)'}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {isSyncing && <RefreshCw size={14} className="animate-spin text-emerald-200" />}
-          <button onClick={() => setIsAdmin(!isAdmin)} className={`text-xs px-3 py-1.5 rounded-full flex items-center gap-1 border ${isAdmin ? 'bg-emerald-800 border-emerald-600' : 'bg-amber-600 border-amber-500'}`}>
-            {isAdmin ? <Unlock size={14}/> : <Lock size={14}/>}
-            {isAdmin ? 'Mode Admin' : 'Mode Staff'}
-          </button>
-        </div>
+        <button onClick={() => setIsAdmin(!isAdmin)} className={`text-xs px-3 py-1.5 rounded-full flex items-center gap-1 border ${isAdmin ? 'bg-emerald-800 border-emerald-600' : 'bg-amber-600 border-amber-500'}`}>
+          {isAdmin ? 'Mode Admin' : 'Mode Staff'}
+        </button>
       </header>
 
       <main className="p-4 max-w-md mx-auto">
-        {syncStatus && (
-          <div className="mb-3 p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] rounded-lg text-center font-medium">
-            {syncStatus}
-          </div>
-        )}
-
         {/* TAB 1: MASTER DATA */}
         {activeTab === 'master' && (
           <div className="space-y-6">
@@ -355,10 +272,21 @@ export default function App() {
                   <button onClick={handleAddBahan} className="w-full bg-emerald-600 text-white text-sm py-2 rounded-lg font-medium">Simpan Bahan</button>
                 </div>
 
+                {/* Master Tenaga Kerja */}
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                  <h3 className="font-semibold text-sm text-emerald-700">+ Master Tenaga Kerja</h3>
+                  <input type="text" placeholder="Nama / Posisi (cth: Koki Dapur)" value={newTenaga.nama} onChange={e => setNewTenaga({...newTenaga, nama: e.target.value})} className="w-full p-2 border text-sm rounded-lg" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="Nominal Gaji Harian (Rp)" value={newTenaga.nominal} onChange={e => setNewTenaga({...newTenaga, nominal: e.target.value})} className="p-2 border text-xs rounded-lg" />
+                    <input type="number" placeholder="Jam Kerja/Hari" value={newTenaga.jamKerjaHarian} onChange={e => setNewTenaga({...newTenaga, jamKerjaHarian: e.target.value})} className="p-2 border text-xs rounded-lg" />
+                  </div>
+                  <button onClick={handleAddTenaga} className="w-full bg-emerald-600 text-white text-sm py-2 rounded-lg font-medium">Simpan Tenaga Kerja</button>
+                </div>
+
                 {/* Master Alat / Aset */}
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
-                  <h3 className="font-semibold text-sm text-emerald-700">+ Master Alat / Aset Produksi</h3>
-                  <input type="text" placeholder="Nama Alat (cth: Gas Stove/Mixer)" value={newAlat.nama} onChange={e => setNewAlat({...newAlat, nama: e.target.value})} className="w-full p-2 border text-sm rounded-lg" />
+                  <h3 className="font-semibold text-sm text-emerald-700">+ Master Alat Produksi</h3>
+                  <input type="text" placeholder="Nama Alat (cth: Mixer/Kuali)" value={newAlat.nama} onChange={e => setNewAlat({...newAlat, nama: e.target.value})} className="w-full p-2 border text-sm rounded-lg" />
                   <div className="grid grid-cols-3 gap-2">
                     <input type="number" placeholder="Harga (Rp)" value={newAlat.hargaBeli} onChange={e => setNewAlat({...newAlat, hargaBeli: e.target.value})} className="p-2 border text-xs rounded-lg" />
                     <input type="number" placeholder="Umur (Bln)" value={newAlat.umurBulan} onChange={e => setNewAlat({...newAlat, umurBulan: e.target.value})} className="p-2 border text-xs rounded-lg" />
@@ -380,17 +308,24 @@ export default function App() {
             )}
 
             {/* List Master Data */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
-              <h3 className="font-semibold text-sm">Daftar Aset & Overhead Tersimpan</h3>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+              <h3 className="font-semibold text-sm">Daftar Master Data Tersimpan</h3>
               <div className="divide-y max-h-60 overflow-y-auto text-xs space-y-2">
-                <p className="font-bold text-slate-500 pt-2">1. Alat Produksi ({alatMaster.length})</p>
+                <p className="font-bold text-slate-500 pt-1">1. Tenaga Kerja ({tenagaMaster.length})</p>
+                {tenagaMaster.map(t => (
+                  <div key={t.id} className="py-1 flex justify-between">
+                    <span>{t.nama}</span>
+                    <span className="font-semibold text-emerald-700">{formatRp(t.nominal)}/hari ({t.jamKerjaHarian} jam)</span>
+                  </div>
+                ))}
+                <p className="font-bold text-slate-500 pt-2">2. Alat Produksi ({alatMaster.length})</p>
                 {alatMaster.map(a => (
                   <div key={a.id} className="py-1 flex justify-between">
                     <span>{a.nama} ({formatRp(a.hargaBeli)})</span>
                     <span className="text-slate-500">{a.umurBulan} Bln</span>
                   </div>
                 ))}
-                <p className="font-bold text-slate-500 pt-2">2. Biaya Overhead ({overheadMaster.length})</p>
+                <p className="font-bold text-slate-500 pt-2">3. Biaya Overhead ({overheadMaster.length})</p>
                 {overheadMaster.map(o => (
                   <div key={o.id} className="py-1 flex justify-between">
                     <span>{o.nama}</span>
@@ -445,10 +380,37 @@ export default function App() {
               ))}
             </div>
 
+            {/* BIAYA TENAGA KERJA */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+              <div className="flex justify-between items-center">
+                <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-1"><UserCheck size={16}/> 3. Biaya Tenaga Kerja</h3>
+                <button onClick={() => setSelectedTenagaList([...selectedTenagaList, { id: Date.now().toString(), tenagaId: '', namaManual: '', tipe: 'jam', durasiAtauNominal: '30' }])} className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-200 flex items-center gap-1"><Plus size={14}/> Tambah Tenaga</button>
+              </div>
+              {selectedTenagaList.map((item, index) => (
+                <div key={item.id} className="p-2 border rounded-lg bg-slate-50 space-y-2 text-xs">
+                  <div className="flex gap-2 items-center">
+                    <select value={item.tenagaId} onChange={e => { const copy = [...selectedTenagaList]; copy[index].tenagaId = e.target.value; setSelectedTenagaList(copy); }} className="w-full p-2 border rounded-lg bg-white">
+                      <option value="">-- Pilih Tenaga Kerja Master --</option>
+                      {tenagaMaster.map(t => <option key={t.id} value={t.id}>{t.nama} ({formatRp(t.nominal)}/hari)</option>)}
+                      <option value="MANUAL">+ Manual (Simpan Baru)</option>
+                    </select>
+                    <button onClick={() => setSelectedTenagaList(selectedTenagaList.filter(x => x.id !== item.id))} className="text-red-500 p-1"><Trash2 size={16}/></button>
+                  </div>
+                  {item.tenagaId === 'MANUAL' && (
+                    <input type="text" placeholder="Nama Karyawan/Posisi" value={item.namaManual} onChange={e => { const copy = [...selectedTenagaList]; copy[index].namaManual = e.target.value; setSelectedTenagaList(copy); }} className="w-full p-1.5 border rounded bg-white" />
+                  )}
+                  <div className="flex justify-between items-center bg-white p-1.5 rounded border">
+                    <span className="text-slate-500">{item.tipe === 'borongan' ? 'Biaya Borongan (Rp):' : 'Durasi Kerja (Menit):'}</span>
+                    <input type="number" placeholder="Nilai" value={item.durasiAtauNominal} onChange={e => { const copy = [...selectedTenagaList]; copy[index].durasiAtauNominal = e.target.value; setSelectedTenagaList(copy); }} className="w-28 p-1 border rounded text-right font-semibold" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {/* Penyusutan Alat */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
               <div className="flex justify-between items-center">
-                <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-1"><Wrench size={16}/> 3. Penyusutan Alat / Aset</h3>
+                <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-1"><Wrench size={16}/> 4. Penyusutan Alat / Aset</h3>
                 <button onClick={() => setSelectedAlatList([...selectedAlatList, { id: Date.now().toString(), alatId: '', namaManual: '', hargaBeli: '', umurBulan: '12', targetPorsiHarian: '50' }])} className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-200 flex items-center gap-1"><Plus size={14}/> Tambah Alat</button>
               </div>
               {selectedAlatList.map((item, index) => (
@@ -475,7 +437,7 @@ export default function App() {
             {/* Biaya Overhead / Operasional */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
               <div className="flex justify-between items-center">
-                <h3 className="font-semibold text-sm text-slate-800">4. Biaya Overhead / Operasional</h3>
+                <h3 className="font-semibold text-sm text-slate-800">5. Biaya Overhead / Operasional</h3>
                 <button onClick={() => setSelectedOverheadList([...selectedOverheadList, { id: Date.now().toString(), overheadId: '', namaManual: '', nominal: '0' }])} className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-200 flex items-center gap-1"><Plus size={14}/> Tambah</button>
               </div>
               {selectedOverheadList.map((item, index) => (
@@ -511,10 +473,9 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Slider Profit Margin */}
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
-                  <span>Target Margin keuntungan: <strong>{targetMargin}%</strong></span>
+                  <span>Target Margin: <strong>{targetMargin}%</strong></span>
                   <span className="font-bold text-emerald-300">Target Jual (Dine-in): {formatRp(hargaJualTarget)}</span>
                 </div>
                 <input type="range" min="5" max="80" value={targetMargin} onChange={e => setTargetMargin(Number(e.target.value))} className="w-full accent-emerald-400" />
@@ -536,14 +497,9 @@ export default function App() {
 
                 <div className="space-y-1 pt-1">
                   <div className="flex justify-between text-slate-300">
-                    <span>Shopee Food / GoFood:</span>
-                    <span className="font-bold text-amber-300">{formatRp(hargaGoFood)}</span>
+                    <span>Shopee Food / GoFood / GrabFood:</span>
+                    <span className="font-bold text-amber-300">{formatRp(calcOnlinePrice(goFoodFee))}</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
-                    <span>Grab Food:</span>
-                    <span className="font-bold text-amber-300">{formatRp(hargaGrabFood)}</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 italic mt-1">*Harga di atas disesuaikan agar penghasilan bersih Anda tetap senilai {formatRp(hargaJualTarget)}.</p>
                 </div>
               </div>
 
@@ -577,11 +533,6 @@ export default function App() {
                     <p className="text-[10px] text-slate-400 mt-1">HPP: {formatRp(r.totalHppPerPorsi)}/porsi</p>
                   </div>
                 </div>
-
-                <div className="flex gap-2 pt-1">
-                  <button onClick={() => window.print()} className="flex-1 text-xs border border-slate-300 py-1.5 rounded-lg flex justify-center items-center gap-1.5 font-medium hover:bg-slate-50"><Printer size={14}/> Cetak PDF</button>
-                  <button onClick={() => exportToCSV(`Resep-${r.namaProduk}`, r.bahanList)} className="flex-1 text-xs border border-emerald-300 text-emerald-800 bg-emerald-50 py-1.5 rounded-lg flex justify-center items-center gap-1.5 font-medium hover:bg-emerald-100"><Download size={14}/> Download Excel</button>
-                </div>
               </div>
             ))}
           </div>
@@ -602,7 +553,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Bottom Nav */}
+      {/* Navigasi Bawah */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-2 z-50">
         <button onClick={() => setActiveTab('katalog')} className={`flex flex-col items-center text-[10px] ${activeTab === 'katalog' ? 'text-emerald-600 font-bold' : 'text-slate-400'}`}><BookOpen size={18}/> Katalog</button>
         <button onClick={() => setActiveTab('master')} className={`flex flex-col items-center text-[10px] ${activeTab === 'master' ? 'text-emerald-600 font-bold' : 'text-slate-400'}`}><Database size={18}/> Master Data</button>
